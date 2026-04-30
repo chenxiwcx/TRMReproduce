@@ -1,0 +1,7 @@
+item_a,item_b,co_click_score,source,weight
+item_0001,item_0005,0.41,same_user_session,0.8
+item_0002,item_0004,0.18,long_term_coclick,0.4
+item_0003,item_0005,0.22,same_query_cluster,0.5
+item_0004,item_0006,0.15,long_term_coclick,0.3
+item_0001,item_0002,0.12,same_user_session,0.3
+item_0005,item_0006,0.11,same_user_session,0.2
