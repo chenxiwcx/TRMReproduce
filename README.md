@@ -22,8 +22,14 @@ TRMReproduce/
     train_caption.py       # Stage I-A 训练入口
     train_align.py         # Stage I-B 训练入口
     export_emb.py          # 导出 item dense embedding
+  explaination/
+    ai_context.md          # 与 AI 助手协作时沉淀的项目上下文
   requirements.txt
 ```
+
+## 给 AI 助手的上下文
+
+如果使用 Codex/ChatGPT 协助开发，请先阅读 `explaination/ai_context.md`。
 
 ## Qwen2.5-VL-7B Backbone 摘要
 
