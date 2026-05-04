@@ -295,3 +295,132 @@ items.csv + query_item_pairs.csv + item_item_pairs.csv
   -> model.encode(b)
   -> info_nce_loss
 ```
+
+## 补充问答压缩版
+
+### `_batch_encode()` 的作用是什么？
+
+`_batch_encode()` 负责把一组样本转换成 Qwen2.5-VL 可以直接使用的 tensor batch。
+
+整体流程是：
+
+```text
+examples
+  -> _message()
+  -> processor.apply_chat_template()
+  -> processor(...)
+  -> batch
+```
+
+如果 `with_labels=True`，说明当前用于 caption 训练，会额外生成 `labels`。
+
+如果 `with_labels=False`，说明当前只用于 embedding 抽取，不需要生成训练标签。
+
+### `processor.apply_chat_template()` 做什么？
+
+它把结构化 messages 转成 Qwen2.5-VL 熟悉的对话文本格式。
+
+代码里设置 `tokenize=False`，表示这里只生成字符串，真正的 tokenization 交给后面的 `processor(...)`。
+
+`add_generation_prompt=not with_labels` 的含义是：
+
+```text
+with_labels=True:
+  caption 答案已经在 assistant message 里，不再额外加生成提示。
+
+with_labels=False:
+  只给 user 输入，需要加 assistant 开始生成的位置，方便模型按对话格式编码。
+```
+
+### `processor(...)` 的输入参数是什么意思？
+
+```python
+batch = self.processor(
+    text=texts,
+    images=image_inputs,
+    padding=True,
+    return_tensors="pt",
+    max_pixels=self.max_pixels,
+)
+```
+
+各参数含义：
+
+```text
+text:
+  一组已经套好 chat template 的文本。
+
+images:
+  每条样本对应的图片列表；query 没有图片时传 None。
+
+padding=True:
+  把不同长度的文本补齐到同一长度，方便组成 batch tensor。
+
+return_tensors="pt":
+  返回 PyTorch tensor。
+
+max_pixels:
+  限制图片最大像素数，间接控制视觉 token 数和显存开销。
+```
+
+`processor` 可以理解成：
+
+```text
+tokenizer + image processor
+```
+
+它会同时处理文本和图片，输出如 `input_ids`、`attention_mask`、`pixel_values`、`image_grid_thw` 等字段。
+
+### `labels` 是什么？
+
+`labels` 是语言模型训练时的目标 token id，用来计算 caption loss。
+
+当前代码简化为：
+
+```python
+batch["labels"] = batch["input_ids"].clone()
+```
+
+这表示所有 token 都参与 next-token prediction loss。
+
+不过生产训练里更合理的做法是：
+
+```text
+user prompt 部分 -> labels 设为 -100，不计算 loss
+padding 部分 -> labels 设为 -100，不计算 loss
+assistant caption 部分 -> 保留 token id，计算 loss
+```
+
+因为 `caption_cross_entropy()` 里使用了 `ignore_index=-100`，所以 `labels == -100` 的位置不会参与 loss。
+
+### `pixel_values` 和 `image_grid_thw` 是什么？
+
+`pixel_values` 是图片经过 processor 预处理后的视觉张量，表示图片内容本身。
+
+```text
+原始 PIL 图片
+  -> resize / normalize / 视觉预处理
+  -> pixel_values
+  -> 视觉 encoder
+```
+
+`image_grid_thw` 描述视觉 token 的时空网格形状：
+
+```text
+T = temporal，时间维度
+H = height，高度方向 patch 数
+W = width，宽度方向 patch 数
+```
+
+对于单张图片，`T` 通常可以理解为 1。对于多帧视频，`T` 表示时间维度上的帧/patch 结构。
+
+二者区别：
+
+```text
+pixel_values:
+  视觉内容本身。
+
+image_grid_thw:
+  视觉 token 的时间和空间排列结构。
+```
+
